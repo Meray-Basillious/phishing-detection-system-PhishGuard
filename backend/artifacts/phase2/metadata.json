@@ -1,0 +1,105 @@
+{
+  "trained_at": "2026-04-06T21:33:08.569837+00:00",
+  "artifact_dir": "/workspaces/phishing-detection-system-PhishGuard/backend/artifacts/phase2",
+  "content_model_path": "/workspaces/phishing-detection-system-PhishGuard/backend/artifacts/phase2/content_model.joblib",
+  "url_model_path": "/workspaces/phishing-detection-system-PhishGuard/backend/artifacts/phase2/url_model.joblib",
+  "url_intel_path": "/workspaces/phishing-detection-system-PhishGuard/backend/artifacts/phase2/url_intel.joblib",
+  "url_feature_columns": [
+    "having_IP_Address",
+    "URL_Length",
+    "Shortining_Service",
+    "having_At_Symbol",
+    "double_slash_redirecting",
+    "Prefix_Suffix",
+    "having_Sub_Domain",
+    "SSLfinal_State",
+    "Domain_registeration_length",
+    "Favicon",
+    "port",
+    "HTTPS_token",
+    "Request_URL",
+    "URL_of_Anchor",
+    "Links_in_tags",
+    "SFH",
+    "Submitting_to_email",
+    "Abnormal_URL",
+    "Redirect",
+    "on_mouseover",
+    "RightClick",
+    "popUpWidnow",
+    "Iframe",
+    "age_of_domain",
+    "DNSRecord",
+    "web_traffic",
+    "Page_Rank",
+    "Google_Index",
+    "Links_pointing_to_page",
+    "Statistical_report"
+  ],
+  "content_metrics": {
+    "accuracy": 0.991,
+    "precision": 0.9988,
+    "recall": 0.9816,
+    "f1": 0.9901,
+    "roc_auc": 0.9994,
+    "train_samples": 7129,
+    "test_samples": 1783
+  },
+  "url_metrics": {
+    "accuracy": 0.9693,
+    "precision": 0.9727,
+    "recall": 0.9634,
+    "f1": 0.9681,
+    "roc_auc": 0.996,
+    "train_samples": 9516,
+    "test_samples": 2380
+  },
+  "training_stats": {
+    "content_samples_total": 8912,
+    "content_label_distribution": {
+      "phishing": 4081,
+      "safe": 4831
+    },
+    "local_url_records": 841,
+    "local_url_phishing": 839,
+    "local_url_safe": 2,
+    "url_model_samples_total": 11896
+  },
+  "data_sources": [
+    {
+      "name": "Nigerian_Fraud.csv",
+      "source": "Repository bundled training corpus",
+      "purpose": "Phishing-style advance-fee fraud language"
+    },
+    {
+      "name": "UCI SMS Spam Collection",
+      "source": "https://archive.ics.uci.edu/ml/machine-learning-databases/00228/smsspamcollection.zip",
+      "purpose": "Public ham/spam language for content-pattern recognition"
+    },
+    {
+      "name": "Local SQLite Email Feedback",
+      "source": "/workspaces/phishing-detection-system-PhishGuard/backend/instance/phishing_db.db, /workspaces/phishing-detection-system-PhishGuard/frontend/instance/phishing_db.db",
+      "purpose": "Use repository-local analyst feedback for supervised retraining"
+    },
+    {
+      "name": "OpenML PhishingWebsites",
+      "source": "https://www.openml.org/d/4534",
+      "purpose": "Public phishing URL feature benchmark for URL-analysis training"
+    },
+    {
+      "name": "Phishing.Database ACTIVE URLs/Domains",
+      "source": "https://github.com/Phishing-Database/Phishing.Database",
+      "purpose": "Known phishing URL/domain threat intelligence for URL analysis inside email bodies"
+    }
+  ],
+  "notes": [
+    "Content model is a TF-IDF text classifier trained on all local and public labeled corpora available to the project.",
+    "URL model is a random forest trained on phishing-websites benchmark features plus URL features extracted from local labeled bodies.",
+    "Known phishing URL intelligence is matched against URLs extracted from email bodies for direct IOC coverage."
+  ],
+  "phishing_database_version": "V.2026-04-06.01",
+  "phishing_database_counts": {
+    "active_urls": 731914,
+    "active_domains": 752444
+  }
+}
