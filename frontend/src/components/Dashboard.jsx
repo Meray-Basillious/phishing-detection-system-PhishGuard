@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { emailService } from '../services/api';
 import '../styles/Dashboard.css';
+import Phase2ModelPerformance from './Phase2ModelPerformance';
+
 
 const StatCard = ({ title, value, type, icon }) => {
   return (
@@ -110,56 +112,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {stats.phase2_metrics?.content_metrics && stats.phase2_metrics?.url_metrics && (
-        <div className="phase2-panel">
-          <div className="phase2-header">
-            <div>
-              <h2>Phase 2 Model Performance</h2>
-              <p>Public corpora and runtime model training results.</p>
-            </div>
-            <div className="phase2-status">Enabled</div>
-          </div>
-
-          <div className="stats-grid phase2-grid">
-            <StatCard
-              title="Content Model F1"
-              value={stats.phase2_metrics.content_metrics.f1?.toFixed(4) ?? '0.0000'}
-              type="info"
-              icon="📝"
-            />
-            <StatCard
-              title="URL Model F1"
-              value={stats.phase2_metrics.url_metrics.f1?.toFixed(4) ?? '0.0000'}
-              type="warning"
-              icon="🔗"
-            />
-            <StatCard
-              title="Content ROC AUC"
-              value={stats.phase2_metrics.content_metrics.roc_auc?.toFixed(4) ?? '0.0000'}
-              type="success"
-              icon="📚"
-            />
-            <StatCard
-              title="URL ROC AUC"
-              value={stats.phase2_metrics.url_metrics.roc_auc?.toFixed(4) ?? '0.0000'}
-              type="danger"
-              icon="🧭"
-            />
-          </div>
-
-          <div className="phase2-sources">
-            <h3>Training Sources</h3>
-            <div className="source-list">
-              {(stats.phase2_metrics.data_sources || []).map((source) => (
-                <div key={source.name} className="source-card">
-                  <strong>{source.name}</strong>
-                  <span>{source.purpose}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <Phase2ModelPerformance phase2Metrics={stats.phase2_metrics} />
 
       {error && <div className="error-message">{error}</div>}
     </div>

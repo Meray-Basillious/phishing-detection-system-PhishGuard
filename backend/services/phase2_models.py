@@ -174,87 +174,175 @@ def _ternary(length: int, low_threshold: int, high_threshold: int) -> int:
     return 0
 
 
-def extract_url_feature_row(url: str, body: str = '') -> Dict[str, int]:
-    """Extract phishing-websites-style features from a single URL.
-
-    The original benchmark dataset stores these as ternary values, so the
-    extractor emits -1/0/1 where possible and falls back to neutral values when
-    a browser-only feature cannot be observed from a raw email URL.
+def extract_url_feature_row(url: str, body: str = "") -> dict:
     """
-    normalized_url = _normalize_url(url)
-    parsed_url, host, path, query = _parse_url_parts(normalized_url)
-    full_url = normalized_url.lower()
-    registered_domain = _registered_domain(host)
-    host_parts = [part for part in host.split('.') if part]
-    subdomain_count = max(len(host_parts) - 2, 0)
+    Extract canonical URL features used by the runtime URL model.
 
-    shortener_flag = -1 if registered_domain in SHORTENING_DOMAINS else 1
-    ip_flag = -1 if host and _safe_ip_address(host) else 1
-    at_flag = -1 if '@' in full_url else 1
-    double_slash_flag = -1 if full_url.count('//') > 1 else 1
-    prefix_suffix_flag = -1 if '-' in registered_domain else 1
-    subdomain_flag = 1 if subdomain_count <= 1 else 0 if subdomain_count == 2 else -1
-    ssl_flag = 1 if parsed_url.scheme == 'https' else -1
-    registration_length_flag = _ternary(len(registered_domain), 12, 20)
-    port_flag = -1 if parsed_url.port and parsed_url.port not in {80, 443} else 1
-    https_token_flag = -1 if 'https' in registered_domain and parsed_url.scheme != 'https' else 1
-    redirect_flag = -1 if _has_suspicious_query(query) or 'redirect' in path else 1
-    abnormal_url_flag = -1 if ip_flag == -1 or prefix_suffix_flag == -1 else 1
-    submitting_to_email_flag = -1 if 'mailto:' in full_url or '@' in query else 1
+    This version is defensive against malformed URLs that can appear in
+    real phishing corpora, such as invalid ports or broken netloc syntax.
+    """
+    import math
+    import re
+    from urllib.parse import urlparse
 
-    url_length_flag = _ternary(len(full_url), 54, 75)
-    favicon_flag = -1 if _contains_brand_like_tokens(host) and prefix_suffix_flag == -1 else 1
-    request_url_flag = -1 if path.count('/') > 4 or query else 1
-    url_of_anchor_flag = -1 if '#' in full_url else 1
-    links_in_tags_flag = 0
-    sfh_flag = -1 if any(token in path for token in ['login', 'signin', 'verify', 'update']) else 1
-    mouseover_flag = 0
-    right_click_flag = 0
-    popup_flag = 0
-    iframe_flag = 0
-    age_of_domain_flag = -1 if len(registered_domain) > 18 else 1
-    dns_record_flag = 0
-    web_traffic_flag = -1 if 'utm_' in query or 'campaign' in query else 0
-    page_rank_flag = 0
-    google_index_flag = 1 if 'google' in registered_domain else 0
-    links_pointing_flag = -1 if body and normalized_url in body else 0
-    statistical_report_flag = -1 if _contains_brand_like_tokens(path) or _contains_brand_like_tokens(query) else 0
+    def safe_int_bool(value: bool) -> int:
+        return 1 if value else -1
 
-    feature_values = {
-        'having_IP_Address': ip_flag,
-        'URL_Length': url_length_flag,
-        'Shortining_Service': shortener_flag,
-        'having_At_Symbol': at_flag,
-        'double_slash_redirecting': double_slash_flag,
-        'Prefix_Suffix': prefix_suffix_flag,
-        'having_Sub_Domain': subdomain_flag,
-        'SSLfinal_State': ssl_flag,
-        'Domain_registeration_length': registration_length_flag,
-        'Favicon': favicon_flag,
-        'port': port_flag,
-        'HTTPS_token': https_token_flag,
-        'Request_URL': request_url_flag,
-        'URL_of_Anchor': url_of_anchor_flag,
-        'Links_in_tags': links_in_tags_flag,
-        'SFH': sfh_flag,
-        'Submitting_to_email': submitting_to_email_flag,
-        'Abnormal_URL': abnormal_url_flag,
-        'Redirect': redirect_flag,
-        'on_mouseover': mouseover_flag,
-        'RightClick': right_click_flag,
-        'popUpWidnow': popup_flag,
-        'Iframe': iframe_flag,
-        'age_of_domain': age_of_domain_flag,
-        'DNSRecord': dns_record_flag,
-        'web_traffic': web_traffic_flag,
-        'Page_Rank': page_rank_flag,
-        'Google_Index': google_index_flag,
-        'Links_pointing_to_page': links_pointing_flag,
-        'Statistical_report': statistical_report_flag,
+    def safe_len(value: str) -> int:
+        return len(value or "")
+
+    def safe_port(parsed_url) -> int | None:
+        try:
+            return parsed_url.port
+        except ValueError:
+            return None
+
+    def safe_hostname(parsed_url) -> str:
+        try:
+            return (parsed_url.hostname or "").lower()
+        except Exception:
+            return ""
+
+    def safe_path(parsed_url) -> str:
+        try:
+            return parsed_url.path or ""
+        except Exception:
+            return ""
+
+    def safe_query(parsed_url) -> str:
+        try:
+            return parsed_url.query or ""
+        except Exception:
+            return ""
+
+    def normalize_url(raw_url: str) -> str:
+        raw_url = str(raw_url or "").strip()
+
+        # Remove surrounding punctuation often attached in email bodies
+        raw_url = raw_url.strip("[](){}<>'\".,;")
+
+        if not raw_url:
+            return ""
+
+        # Add scheme if missing
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9+\-.]*://", raw_url):
+            raw_url = "http://" + raw_url
+
+        return raw_url
+
+    normalized_url = normalize_url(url)
+    parsed_url = urlparse(normalized_url)
+
+    hostname = safe_hostname(parsed_url)
+    path = safe_path(parsed_url)
+    query = safe_query(parsed_url)
+    port = safe_port(parsed_url)
+
+    full_url = normalized_url
+    domain = hostname
+    subdomain = ""
+
+    if hostname:
+        parts = hostname.split(".")
+        if len(parts) > 2:
+            subdomain = ".".join(parts[:-2])
+
+    url_length = safe_len(full_url)
+    domain_length = safe_len(domain)
+    path_length = safe_len(path)
+    query_length = safe_len(query)
+
+    digit_count = sum(ch.isdigit() for ch in full_url)
+    letter_count = sum(ch.isalpha() for ch in full_url)
+    special_count = sum(not ch.isalnum() for ch in full_url)
+
+    dot_count = full_url.count(".")
+    hyphen_count = full_url.count("-")
+    underscore_count = full_url.count("_")
+    slash_count = full_url.count("/")
+    question_count = full_url.count("?")
+    equal_count = full_url.count("=")
+    at_count = full_url.count("@")
+    ampersand_count = full_url.count("&")
+    percent_count = full_url.count("%")
+
+    https_flag = safe_int_bool(parsed_url.scheme.lower() == "https")
+    ip_flag = safe_int_bool(bool(re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", domain)))
+    shortening_flag = safe_int_bool(
+        any(shortener in domain for shortener in [
+            "bit.ly", "tinyurl.com", "goo.gl", "t.co", "is.gd", "ow.ly", "buff.ly", "rb.gy"
+        ])
+    )
+    at_symbol_flag = safe_int_bool("@" in full_url)
+    double_slash_flag = safe_int_bool(full_url.rfind("//") > 7)
+    hyphen_domain_flag = safe_int_bool("-" in domain)
+
+    # FIX: do not crash on malformed port
+    port_flag = -1 if (port is not None and port not in {80, 443}) else 1
+
+    suspicious_tld_flag = safe_int_bool(
+        any(domain.endswith(tld) for tld in [".tk", ".ml", ".ga", ".cf", ".gq", ".work", ".zip", ".country"])
+    )
+
+    punycode_flag = safe_int_bool("xn--" in domain)
+    long_url_flag = safe_int_bool(url_length > 75)
+    long_domain_flag = safe_int_bool(domain_length > 25)
+    many_subdomains_flag = safe_int_bool(subdomain.count(".") >= 2 if subdomain else False)
+
+    phishing_keywords = [
+        "login", "verify", "secure", "account", "update", "signin", "banking",
+        "confirm", "password", "invoice", "payment", "wallet", "alert", "suspended"
+    ]
+    keyword_flag = safe_int_bool(any(keyword in full_url.lower() for keyword in phishing_keywords))
+
+    body_lower = (body or "").lower()
+    url_lower = full_url.lower()
+
+    body_domain_mismatch_flag = 1
+    if body_lower and domain:
+        visible_domains = re.findall(r"https?://([a-zA-Z0-9.-]+)", body_lower)
+        if visible_domains:
+            mismatch = any(domain not in vis.lower() for vis in visible_domains[:5])
+            body_domain_mismatch_flag = -1 if mismatch else 1
+
+    entropy = 0.0
+    if full_url:
+        probs = [full_url.count(c) / len(full_url) for c in set(full_url)]
+        entropy = -sum(p * math.log2(p) for p in probs if p > 0)
+
+    return {
+        "url_length": url_length,
+        "domain_length": domain_length,
+        "path_length": path_length,
+        "query_length": query_length,
+        "digit_count": digit_count,
+        "letter_count": letter_count,
+        "special_count": special_count,
+        "dot_count": dot_count,
+        "hyphen_count": hyphen_count,
+        "underscore_count": underscore_count,
+        "slash_count": slash_count,
+        "question_count": question_count,
+        "equal_count": equal_count,
+        "at_count": at_count,
+        "ampersand_count": ampersand_count,
+        "percent_count": percent_count,
+        "https_flag": https_flag,
+        "ip_flag": ip_flag,
+        "shortening_flag": shortening_flag,
+        "at_symbol_flag": at_symbol_flag,
+        "double_slash_flag": double_slash_flag,
+        "hyphen_domain_flag": hyphen_domain_flag,
+        "port_flag": port_flag,
+        "suspicious_tld_flag": suspicious_tld_flag,
+        "punycode_flag": punycode_flag,
+        "long_url_flag": long_url_flag,
+        "long_domain_flag": long_domain_flag,
+        "many_subdomains_flag": many_subdomains_flag,
+        "keyword_flag": keyword_flag,
+        "body_domain_mismatch_flag": body_domain_mismatch_flag,
+        "entropy": entropy,
     }
-
-    return feature_values
-
 
 @dataclass
 class Phase2ModelBundle:
@@ -307,36 +395,31 @@ class Phase2ModelBundle:
             return float(max(0.0, min(1.0, probability)))
         except Exception:
             return 0.0
-
-    def predict_url_score(self, body: str, urls: Optional[List[str]] = None) -> float:
-        url_list = urls if urls is not None else extract_urls_from_text(body)
-        if not url_list:
+        
+    def predict_url_score(self, body: str, urls: list[str]) -> float:
+        if not self.is_ready or self.url_model is None:
             return 0.0
 
-        intel_summary = self.inspect_url_intel(url_list)
-        intel_score = float(intel_summary.get('score', 0.0))
+        if not urls:
+            return 0.0
 
-        if self.url_model is None:
-            return intel_score
+        scores = []
 
-        probability_scores = []
-        for url in url_list:
-            feature_row = extract_url_feature_row(url, body=body)
-            ordered_row = pd.DataFrame([
-                {feature_name: feature_row[feature_name] for feature_name in URL_FEATURE_NAMES}
-            ], columns=URL_FEATURE_NAMES)
+        for url in urls:
             try:
-                probability = self.url_model.predict_proba(ordered_row)[0][1]
-                probability_scores.append(float(probability))
+                feature_row = extract_url_feature_row(url, body=body)
+                X = pd.DataFrame([feature_row])[self.url_feature_columns]
+                prob = float(self.url_model.predict_proba(X)[0, 1])
+                scores.append(prob)
             except Exception:
+                # Skip malformed URLs instead of crashing the whole analysis
                 continue
 
-        if not probability_scores:
-            return intel_score
+        if not scores:
+            return 0.0
 
-        model_score = float(max(probability_scores))
-        return max(model_score, intel_score)
-
+        return max(scores)
+    
     def inspect_url_intel(self, urls: List[str]) -> Dict[str, object]:
         """Return URL intel matches and a score for extracted URLs."""
         if not self.url_intel or not urls:

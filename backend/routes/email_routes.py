@@ -1,10 +1,12 @@
 from flask import Blueprint, request, jsonify
 from models import db, Email, ThreatAlert, AnalysisLog
-from services.phishing_detector import PhishingDetector
+from services.hybrid_analyzer import HybridPhishingAnalyzer
 from datetime import datetime
+import json
+from pathlib import Path
 
 email_bp = Blueprint('emails', __name__, url_prefix='/api/emails')
-detector = PhishingDetector()
+detector = HybridPhishingAnalyzer()
 
 
 @email_bp.route('/analyze', methods=['POST'])
@@ -233,8 +235,82 @@ def get_phase2_metrics():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+def _load_model_comparison_report():
+    """Load the Phase 2 model-comparison report from disk."""
+    report_path = Path(__file__).resolve().parents[1] / 'artifacts' / 'model_comparison' / 'model_comparison_report.json'
 
+    if not report_path.exists():
+        return {
+            'available': False,
+            'report_path': str(report_path),
+            'message': 'Model comparison report not found. Run backend/train_phase2_model_comparison.py first.',
+            'report': None,
+        }
 
+    try:
+        with report_path.open('r', encoding='utf-8') as f:
+            report = json.load(f)
+
+        return {
+            'available': True,
+            'report_path': str(report_path),
+            'message': 'Model comparison report loaded successfully.',
+            'report': report,
+        }
+    except Exception as exc:
+        return {
+            'available': False,
+            'report_path': str(report_path),
+            'message': f'Failed to load model comparison report: {exc}',
+            'report': None,
+        }
+
+@email_bp.route('/phase2-model-comparison', methods=['GET'])
+def get_phase2_model_comparison():
+    try:
+        metadata = detector.phase2_models.metadata if getattr(detector, "phase2_models", None) else {}
+
+        report_path = Path(__file__).resolve().parents[1] / 'artifacts' / 'model_comparison' / 'model_comparison_report.json'
+
+        report = None
+        available = False
+        message = 'Model comparison report not found.'
+
+        if report_path.exists():
+            try:
+                report = json.loads(report_path.read_text(encoding='utf-8'))
+                available = True
+                message = 'Model comparison report loaded successfully.'
+            except Exception as exc:
+                message = f'Could not read comparison report: {exc}'
+
+        return jsonify({
+            'phase2_enabled': detector.phase2_models.is_ready if getattr(detector, "phase2_models", None) else False,
+            'trained_at': metadata.get('trained_at'),
+            'content_metrics': metadata.get('content_metrics', {}),
+            'url_metrics': metadata.get('url_metrics', {}),
+            'comparison': {
+                'available': available,
+                'report_path': str(report_path),
+                'message': message,
+                'report': report,
+            },
+            'current_models': {
+                'url': {
+                    'name': 'Random Forest',
+                    'metrics': metadata.get('url_metrics', {}),
+                },
+                'content': {
+                    'name': 'Logistic Regression',
+                    'metrics': metadata.get('content_metrics', {}),
+                },
+            },
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 @email_bp.route('/<int:email_id>/mark-phishing', methods=['POST'])
 def mark_as_phishing(email_id):
     """Mark an email as phishing (user feedback)"""
@@ -289,3 +365,4 @@ def mark_as_safe(email_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+

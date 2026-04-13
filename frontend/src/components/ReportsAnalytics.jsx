@@ -1,182 +1,153 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Chart as ChartJS,
   ArcElement,
-  BarElement,
-  CategoryScale,
-  LinearScale,
   Tooltip,
   Legend,
 } from 'chart.js';
-import { Doughnut, Bar } from 'react-chartjs-2';
+import { Doughnut } from 'react-chartjs-2';
 import { emailService } from '../services/api';
 import '../styles/ReportsAnalytics.css';
 
-ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
+ChartJS.register(ArcElement, Tooltip, Legend);
 
 const ReportsAnalytics = () => {
-  const [reportData, setReportData] = useState(null);
+  const [statistics, setStatistics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    const fetchReports = async () => {
+      try {
+        setLoading(true);
+        const data = await emailService.getStatistics();
+        setStatistics(data);
+        setError(null);
+      } catch (err) {
+        setError('Failed to load reports');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchReports();
   }, []);
 
-  const fetchReports = async () => {
-    try {
-      setLoading(true);
-      const [statistics, phase2Metrics] = await Promise.all([
-        emailService.getStatistics(),
-        emailService.getPhase2Metrics(),
-      ]);
+  const threatEntries = Object.entries(statistics?.threat_distribution || {});
+  const totalThreats = threatEntries.reduce((sum, [, value]) => sum + value, 0);
 
-      setReportData({
-        statistics,
-        phase2Metrics,
-      });
-      setError(null);
-    } catch (err) {
-      setError('Failed to load reports');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const threatChartData = useMemo(() => {
+    const hasThreats = threatEntries.length > 0;
+
+    return {
+      labels: hasThreats ? threatEntries.map(([label]) => label) : ['No threats'],
+      datasets: [
+        {
+          data: hasThreats ? threatEntries.map(([, value]) => value) : [1],
+          backgroundColor: hasThreats
+            ? ['#2563eb', '#dc2626', '#ea580c', '#16a34a', '#0f766e', '#7c3aed']
+            : ['#cbd5e1'],
+          borderWidth: 0,
+          hoverOffset: 8,
+        },
+      ],
+    };
+  }, [threatEntries]);
+
+  const threatChartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '58%',
+      layout: {
+        padding: 8,
+      },
+      plugins: {
+        legend: {
+          position: 'right',
+          align: 'center',
+          labels: {
+            usePointStyle: true,
+            pointStyle: 'circle',
+            boxWidth: 10,
+            boxHeight: 10,
+            padding: 18,
+            font: {
+              size: 12,
+            },
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: function (context) {
+              const label = context.label || '';
+              const value = context.parsed || 0;
+              const total = context.dataset.data.reduce((sum, item) => sum + item, 0);
+              const percentage = total ? ((value / total) * 100).toFixed(1) : '0.0';
+              return `${label}: ${value} (${percentage}%)`;
+            },
+          },
+        },
+      },
+    };
+  }, []);
 
   if (loading) {
-    return <div className="reports-page loading">Loading reports...</div>;
+    return <div className="reports-loading">Loading reports...</div>;
   }
 
   if (error) {
-    return <div className="reports-page error-message">{error}</div>;
+    return <div className="reports-error">{error}</div>;
   }
-
-  const statistics = reportData?.statistics || {};
-  const phase2Metrics = reportData?.phase2Metrics || {};
-  const contentMetrics = phase2Metrics?.content_metrics || {};
-  const urlMetrics = phase2Metrics?.url_metrics || {};
-  const threatEntries = Object.entries(statistics.threat_distribution || {});
-
-  const threatChartData = {
-    labels: threatEntries.length > 0 ? threatEntries.map(([label]) => label) : ['No threats'],
-    datasets: [{
-      data: threatEntries.length > 0 ? threatEntries.map(([, value]) => value) : [1],
-      backgroundColor: ['#2563eb', '#dc2626', '#ea580c', '#16a34a', '#0f766e', '#7c3aed'],
-      borderWidth: 0,
-    }],
-  };
-
-  const modelChartData = {
-    labels: ['Accuracy', 'Precision', 'Recall', 'F1', 'ROC AUC'],
-    datasets: [
-      {
-        label: 'Content Model',
-        data: [
-          contentMetrics.accuracy || 0,
-          contentMetrics.precision || 0,
-          contentMetrics.recall || 0,
-          contentMetrics.f1 || 0,
-          contentMetrics.roc_auc || 0,
-        ],
-        backgroundColor: 'rgba(37, 99, 235, 0.75)',
-      },
-      {
-        label: 'URL Model',
-        data: [
-          urlMetrics.accuracy || 0,
-          urlMetrics.precision || 0,
-          urlMetrics.recall || 0,
-          urlMetrics.f1 || 0,
-          urlMetrics.roc_auc || 0,
-        ],
-        backgroundColor: 'rgba(234, 88, 12, 0.75)',
-      },
-    ],
-  };
-
-  const sourceCards = phase2Metrics?.data_sources || [];
 
   return (
     <div className="reports-page">
-      <div className="reports-hero">
+      <div className="reports-header">
         <h1>Reports & Analytics</h1>
-        <p>Operational view of detection trends, model quality, and training provenance.</p>
+        <p>Operational view of detection trends and threat distribution.</p>
       </div>
 
-      <div className="reports-layout">
-        <div className="report-card summary-card">
-          <h2>Detection Summary</h2>
-          <div className="report-stats">
-            <div>
-              <span>Total Emails</span>
-              <strong>{statistics.total_emails || 0}</strong>
-            </div>
-            <div>
-              <span>Phishing</span>
-              <strong>{statistics.phishing_detected || 0}</strong>
-            </div>
-            <div>
-              <span>Average Risk</span>
-              <strong>{(statistics.average_risk_score || 0).toFixed(3)}</strong>
-            </div>
-            <div>
-              <span>Detection Rate</span>
-              <strong>{statistics.phishing_percentage || 0}%</strong>
-            </div>
-          </div>
+      <div className="reports-stats-grid">
+        <div className="reports-stat-card">
+          <span className="reports-stat-label">Total Emails</span>
+          <strong>{statistics?.total_emails || 0}</strong>
         </div>
 
-        <div className="reports-grid reports-grid-two">
-          <div className="report-card chart-card">
+        <div className="reports-stat-card">
+          <span className="reports-stat-label">Phishing</span>
+          <strong>{statistics?.phishing_detected || 0}</strong>
+        </div>
+
+        <div className="reports-stat-card">
+          <span className="reports-stat-label">Average Risk</span>
+          <strong>{(statistics?.average_risk_score || 0).toFixed(3)}</strong>
+        </div>
+
+        <div className="reports-stat-card">
+          <span className="reports-stat-label">Detection Rate</span>
+          <strong>{statistics?.phishing_percentage || 0}%</strong>
+        </div>
+      </div>
+
+      <section className="reports-threat-panel">
+        <div className="reports-threat-header">
+          <div>
             <h2>Threat Distribution</h2>
-            <div className="chart-shell chart-shell-sm">
-              <Doughnut
-                data={threatChartData}
-                options={{ responsive: true, maintainAspectRatio: false, cutout: '64%' }}
-              />
-            </div>
+            <p>Breakdown of detected threat categories across analyzed emails.</p>
           </div>
-
-          <div className="report-card chart-card">
-            <h2>Phase 2 Metrics</h2>
-            <div className="metric-list compact-metrics">
-              <div className="metric-row"><span>Content F1</span><strong>{(contentMetrics.f1 || 0).toFixed(4)}</strong></div>
-              <div className="metric-row"><span>Content ROC AUC</span><strong>{(contentMetrics.roc_auc || 0).toFixed(4)}</strong></div>
-              <div className="metric-row"><span>URL F1</span><strong>{(urlMetrics.f1 || 0).toFixed(4)}</strong></div>
-              <div className="metric-row"><span>URL ROC AUC</span><strong>{(urlMetrics.roc_auc || 0).toFixed(4)}</strong></div>
-              <div className="metric-row"><span>Trained At</span><strong>{phase2Metrics.trained_at ? new Date(phase2Metrics.trained_at).toLocaleString() : 'Unknown'}</strong></div>
-            </div>
-          </div>
-
-          <div className="report-card chart-card wide-card">
-            <h2>Phase 2 Model Quality</h2>
-            <div className="chart-shell chart-shell-lg">
-              <Bar
-                data={modelChartData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  scales: { y: { min: 0, max: 1 } },
-                }}
-              />
-            </div>
-          </div>
-
-          <div className="report-card wide-card source-card-panel">
-            <h2>Training Sources</h2>
-            <div className="source-grid">
-              {sourceCards.map((source) => (
-                <div className="source-card" key={source.name}>
-                  <strong>{source.name}</strong>
-                  <span>{source.purpose}</span>
-                  <small>{source.source}</small>
-                </div>
-              ))}
-            </div>
+          <div className="reports-threat-total">
+            <span>Total Threat Alerts</span>
+            <strong>{totalThreats}</strong>
           </div>
         </div>
-      </div>
+
+        <div className="reports-threat-chart-wrap">
+          <div className="reports-threat-chart">
+            <Doughnut data={threatChartData} options={threatChartOptions} />
+          </div>
+        </div>
+      </section>
     </div>
   );
 };

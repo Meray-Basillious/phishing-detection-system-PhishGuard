@@ -1,0 +1,32 @@
+{
+  "trained_at": "2026-04-13T17:23:39.479357+00:00",
+  "feature_order": [
+    "overall_risk_score",
+    "sender_score",
+    "subject_score",
+    "body_score",
+    "url_score",
+    "urgency_score",
+    "impersonation_score",
+    "history_score",
+    "header_score",
+    "ml_content_score",
+    "ml_url_score",
+    "intel_exact_match_count",
+    "intel_domain_match_count",
+    "threat_count",
+    "baseline_confidence_numeric"
+  ],
+  "model_type": "Calibrated Logistic Regression",
+  "metrics": {
+    "accuracy": 0.9969,
+    "precision": 0.9969,
+    "recall": 0.999,
+    "f1": 0.998,
+    "roc_auc": 0.9999,
+    "average_precision": 1.0,
+    "brier_score": 0.0027,
+    "train_samples": 5100,
+    "test_samples": 1276
+  }
+}

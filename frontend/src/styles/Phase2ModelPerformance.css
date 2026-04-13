@@ -1,0 +1,260 @@
+.p2-shell {
+  margin-top: 1.5rem;
+  background: #ffffff;
+  border: 1px solid #e9eef5;
+  border-radius: 18px;
+  padding: 1.5rem;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
+}
+
+.p2-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+}
+
+.p2-topbar h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+  color: #0f172a;
+}
+
+.p2-topbar p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.95rem;
+}
+
+.p2-trained-at {
+  min-width: 180px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  text-align: right;
+}
+
+.p2-trained-at span {
+  display: block;
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 0.2rem;
+}
+
+.p2-trained-at strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.p2-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.p2-summary-card,
+.p2-card,
+.p2-source-item {
+  background: #f8fbff;
+  border: 1px solid #e6edf7;
+  border-radius: 16px;
+}
+
+.p2-summary-card {
+  padding: 1rem 1.1rem;
+}
+
+.p2-summary-label {
+  display: block;
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-bottom: 0.35rem;
+}
+
+.p2-summary-card strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.p2-loading {
+  padding: 1rem 0;
+  color: #64748b;
+}
+
+.p2-card {
+  padding: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+.p2-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.p2-card-header h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.p2-card-header p {
+  margin: 0;
+  color: #64748b;
+}
+
+.p2-highlight {
+  background: linear-gradient(135deg, #eff6ff, #f8fafc);
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  min-width: 180px;
+  text-align: right;
+}
+
+.p2-highlight-label {
+  display: block;
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 0.2rem;
+}
+
+.p2-highlight strong {
+  display: block;
+  color: #1d4ed8;
+  margin-bottom: 0.2rem;
+}
+
+.p2-highlight small {
+  color: #475569;
+}
+
+.p2-current-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.p2-badge {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 0.8rem;
+}
+
+.p2-badge-label {
+  display: block;
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 0.25rem;
+}
+
+.p2-badge-value {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.p2-table-wrap {
+  overflow-x: auto;
+}
+
+.p2-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #ffffff;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.p2-table thead th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.9rem 0.85rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.p2-table tbody td {
+  padding: 0.9rem 0.85rem;
+  border-bottom: 1px solid #eef2f7;
+  color: #0f172a;
+  font-size: 0.92rem;
+}
+
+.p2-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.p2-table tbody tr.is-current {
+  background: #f0f7ff;
+}
+
+.p2-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.p2-pill.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.p2-sources {
+  margin-top: 1rem;
+}
+
+.p2-sources h3 {
+  margin: 0 0 0.85rem;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.p2-source-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.85rem;
+}
+
+.p2-source-item {
+  padding: 0.95rem 1rem;
+}
+
+.p2-source-item strong {
+  display: block;
+  color: #0f172a;
+  margin-bottom: 0.35rem;
+}
+
+.p2-source-item span {
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 768px) {
+  .p2-topbar,
+  .p2-card-header {
+    flex-direction: column;
+  }
+
+  .p2-trained-at,
+  .p2-highlight {
+    width: 100%;
+    text-align: left;
+  }
+}

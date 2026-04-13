@@ -9,7 +9,6 @@ const apiClient = axios.create({
   },
 });
 
-// Email Services
 export const emailService = {
   analyzeEmail: async (emailData) => {
     try {
@@ -54,6 +53,15 @@ export const emailService = {
   getPhase2Metrics: async () => {
     try {
       const response = await apiClient.get('/emails/phase2-metrics');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.message;
+    }
+  },
+
+  getPhase2ModelComparison: async () => {
+    try {
+      const response = await apiClient.get('/emails/phase2-model-comparison');
       return response.data;
     } catch (error) {
       throw error.response?.data || error.message;
