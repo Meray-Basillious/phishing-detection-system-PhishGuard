@@ -11,87 +11,78 @@ detector = HybridPhishingAnalyzer()
 
 @email_bp.route('/analyze', methods=['POST'])
 def analyze_email():
-    """
-    Analyze email for phishing
-    
-    Request body:
-    {
-        "sender": "sender@example.com",
-        "recipient": "recipient@example.com",
-        "subject": "Email Subject",
-        "body": "Email body content",
-        "headers": {} (optional)
-    }
-    """
     data = request.get_json()
-    
-    # Validate required fields
+
     required_fields = ['sender', 'recipient', 'subject', 'body']
-    if not all(field in data for field in required_fields):
+    if not data or not all(field in data for field in required_fields):
         return jsonify({'error': 'Missing required fields: sender, recipient, subject, body'}), 400
-    
+
     sender = data.get('sender', '').strip()
     recipient = data.get('recipient', '').strip().lower()
     subject = data.get('subject', '').strip()
     body = data.get('body', '').strip()
     headers = data.get('headers', {})
-    
-    try:
-        # Run AI analysis
-        analysis_result = detector.analyze_email(sender, recipient, subject, body, headers)
 
+    try:
+        analysis_result = detector.analyze_email(sender, recipient, subject, body, headers)
         normalized_sender = analysis_result.get('normalized_sender') or sender
-        
-        # Save email to database
+
+        final_risk_score = analysis_result.get('overall_risk_score', 0.0)
+        final_is_phishing = analysis_result.get('is_phishing', False)
+
         email = Email(
             sender=normalized_sender.lower(),
             recipient=recipient,
             subject=subject,
             body=body,
             headers=headers,
-            risk_score=analysis_result['overall_risk_score'],
-            is_phishing=analysis_result['is_phishing'],
+            risk_score=final_risk_score,
+            is_phishing=final_is_phishing,
             analysis_details=analysis_result
         )
         db.session.add(email)
-        db.session.flush()  # Get the email ID without committing
-        
-        # Create threat alerts if needed
-        if analysis_result['threats'] and analysis_result['threats'][0] != 'No immediate threats detected':
-            for threat in analysis_result['threats']:
+        db.session.flush()
+
+        threats = analysis_result.get('threats', [])
+        if threats and threats[0] != 'No immediate threats detected':
+            for threat in threats:
                 if analysis_result.get('verdict') == 'phishing':
                     severity = 'critical'
                 elif analysis_result.get('verdict') == 'suspicious':
                     severity = 'high'
                 else:
                     severity = 'medium'
+
                 alert = ThreatAlert(
                     email_id=email.id,
                     threat_type=threat,
                     threat_description=f"Detected threat: {threat}",
                     severity=severity,
-                    threat_details={'detection_method': 'AI Analysis'}
+                    threat_details={
+                        'detection_method': analysis_result.get('decision_authority', 'hybrid'),
+                        'analysis_type': analysis_result.get('analysis_type', 'unknown')
+                    }
                 )
                 db.session.add(alert)
-        
-        # Log the analysis
+
         log = AnalysisLog(
             email_id=email.id,
             action='EMAIL_ANALYZED',
             details={
-                'risk_score': analysis_result['overall_risk_score'],
-                'is_phishing': analysis_result['is_phishing']
+                'risk_score': final_risk_score,
+                'is_phishing': final_is_phishing,
+                'decision_authority': analysis_result.get('decision_authority', 'baseline_ml')
             }
         )
         db.session.add(log)
         db.session.commit()
-        
+
         return jsonify({
             'email_id': email.id,
             'analysis': analysis_result,
             'message': 'Email analyzed successfully'
         }), 200
-    
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
@@ -99,32 +90,19 @@ def analyze_email():
 
 @email_bp.route('/history', methods=['GET'])
 def get_email_history():
-    """
-    Get email analysis history
-    
-    Query parameters:
-    - limit: number of records to return (default: 50)
-    - offset: pagination offset (default: 0)
-    - is_phishing: filter by phishing status (true/false)
-    """
     try:
         limit = request.args.get('limit', 50, type=int)
         offset = request.args.get('offset', 0, type=int)
         is_phishing = request.args.get('is_phishing', None)
-        
-        # Build query
+
         query = Email.query
-        
         if is_phishing is not None:
             is_phishing_bool = is_phishing.lower() == 'true'
             query = query.filter_by(is_phishing=is_phishing_bool)
-        
-        # Get total count
+
         total = query.count()
-        
-        # Get paginated results
         emails = query.order_by(Email.analyzed_at.desc()).offset(offset).limit(limit).all()
-        
+
         return jsonify({
             'total': total,
             'limit': limit,
@@ -140,20 +118,17 @@ def get_email_history():
                 'analyzed_at': email.analyzed_at.isoformat()
             } for email in emails]
         }), 200
-    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 @email_bp.route('/<int:email_id>', methods=['GET'])
 def get_email_details(email_id):
-    """Get detailed analysis for a specific email"""
     try:
         email = Email.query.get(email_id)
-        
         if not email:
             return jsonify({'error': 'Email not found'}), 404
-        
+
         threats = [
             {
                 'id': threat.id,
@@ -161,9 +136,10 @@ def get_email_details(email_id):
                 'description': threat.threat_description,
                 'severity': threat.severity,
                 'details': threat.threat_details
-            } for threat in email.threats
+            }
+            for threat in email.threats
         ]
-        
+
         return jsonify({
             'id': email.id,
             'sender': email.sender,
@@ -177,32 +153,27 @@ def get_email_details(email_id):
             'analyzed_at': email.analyzed_at.isoformat(),
             'created_at': email.created_at.isoformat()
         }), 200
-    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 @email_bp.route('/statistics', methods=['GET'])
 def get_statistics():
-    """Get phishing detection statistics"""
     try:
         total_emails = Email.query.count()
         phishing_detected = Email.query.filter_by(is_phishing=True).count()
         safe_emails = Email.query.filter_by(is_phishing=False).count()
-        
-        # Calculate average risk score
+
         avg_risk = db.session.query(db.func.avg(Email.risk_score)).scalar() or 0.0
-        
-        # Get threat types
+
         threats = db.session.query(
             ThreatAlert.threat_type,
             db.func.count(ThreatAlert.id)
         ).group_by(ThreatAlert.threat_type).all()
-        
-        threat_distribution = {threat_type: count for threat_type, count in threats}
 
+        threat_distribution = {threat_type: count for threat_type, count in threats}
         phase2_metrics = detector.phase2_models.metadata if detector.phase2_models else {}
-        
+
         return jsonify({
             'total_emails': total_emails,
             'phishing_detected': phishing_detected,
@@ -212,17 +183,14 @@ def get_statistics():
             'threat_distribution': threat_distribution,
             'phase2_metrics': phase2_metrics,
         }), 200
-    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 @email_bp.route('/phase2-metrics', methods=['GET'])
 def get_phase2_metrics():
-    """Get Phase 2 training metrics and model metadata."""
     try:
         metadata = detector.phase2_models.metadata if detector.phase2_models else {}
-
         return jsonify({
             'phase2_enabled': detector.phase2_models.is_ready if detector.phase2_models else False,
             'trained_at': metadata.get('trained_at'),
@@ -232,12 +200,11 @@ def get_phase2_metrics():
             'data_sources': metadata.get('data_sources', []),
             'notes': metadata.get('notes', []),
         }), 200
-
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
+
+
 def _load_model_comparison_report():
-    """Load the Phase 2 model-comparison report from disk."""
     report_path = Path(__file__).resolve().parents[1] / 'artifacts' / 'model_comparison' / 'model_comparison_report.json'
 
     if not report_path.exists():
@@ -266,11 +233,11 @@ def _load_model_comparison_report():
             'report': None,
         }
 
+
 @email_bp.route('/phase2-model-comparison', methods=['GET'])
 def get_phase2_model_comparison():
     try:
         metadata = detector.phase2_models.metadata if getattr(detector, "phase2_models", None) else {}
-
         report_path = Path(__file__).resolve().parents[1] / 'artifacts' / 'model_comparison' / 'model_comparison_report.json'
 
         report = None
@@ -310,20 +277,18 @@ def get_phase2_model_comparison():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
+
+
 @email_bp.route('/<int:email_id>/mark-phishing', methods=['POST'])
 def mark_as_phishing(email_id):
-    """Mark an email as phishing (user feedback)"""
     try:
         email = Email.query.get(email_id)
-        
         if not email:
             return jsonify({'error': 'Email not found'}), 404
-        
+
         email.is_phishing = True
         db.session.commit()
-        
-        # Log user feedback
+
         log = AnalysisLog(
             email_id=email.id,
             action='USER_MARKED_PHISHING',
@@ -331,9 +296,8 @@ def mark_as_phishing(email_id):
         )
         db.session.add(log)
         db.session.commit()
-        
+
         return jsonify({'message': 'Email marked as phishing'}), 200
-    
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
@@ -341,17 +305,14 @@ def mark_as_phishing(email_id):
 
 @email_bp.route('/<int:email_id>/mark-safe', methods=['POST'])
 def mark_as_safe(email_id):
-    """Mark an email as safe (user feedback)"""
     try:
         email = Email.query.get(email_id)
-        
         if not email:
             return jsonify({'error': 'Email not found'}), 404
-        
+
         email.is_phishing = False
         db.session.commit()
-        
-        # Log user feedback
+
         log = AnalysisLog(
             email_id=email.id,
             action='USER_MARKED_SAFE',
@@ -359,10 +320,8 @@ def mark_as_safe(email_id):
         )
         db.session.add(log)
         db.session.commit()
-        
+
         return jsonify({'message': 'Email marked as safe'}), 200
-    
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
-

@@ -5,6 +5,9 @@ from routes.email_routes import email_bp
 from config import config
 import os
 
+from dotenv import load_dotenv
+load_dotenv()
+
 def create_app(config_name=None):
     """Application factory function"""
     if config_name is None:

@@ -1,6 +1,25 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { emailService } from '../services/api';
 import '../styles/EmailAnalyzer.css';
+
+const VISIBLE_COMPONENTS = [
+  { key: 'sender_score', label: 'Sender Trust' },
+  { key: 'subject_score', label: 'Subject Risk' },
+  { key: 'body_score', label: 'Message Content' },
+  { key: 'url_score', label: 'Links & URLs' },
+  { key: 'urgency_score', label: 'Urgency Pressure' },
+  { key: 'impersonation_score', label: 'Impersonation Risk' },
+];
+
+const hasRealScores = (obj) => {
+  if (!obj || typeof obj !== 'object') return false;
+  const keys = Object.keys(obj);
+  if (!keys.length) return false;
+  return keys.some((key) => {
+    const value = Number(obj[key]);
+    return !Number.isNaN(value) && value > 0;
+  });
+};
 
 const EmailAnalyzer = () => {
   const [formData, setFormData] = useState({
@@ -16,7 +35,7 @@ const EmailAnalyzer = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
@@ -24,7 +43,7 @@ const EmailAnalyzer = () => {
 
   const handleAnalyze = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.sender || !formData.recipient || !formData.subject || !formData.body) {
       setError('Please fill in all fields');
       return;
@@ -34,6 +53,7 @@ const EmailAnalyzer = () => {
       setLoading(true);
       setError(null);
       const result = await emailService.analyzeEmail(formData);
+      console.log('Analyzer response:', result);
       setAnalysis(result);
     } catch (err) {
       setError('Failed to analyze email. Please try again.');
@@ -43,26 +63,90 @@ const EmailAnalyzer = () => {
     }
   };
 
+  const handleReset = () => {
+    setFormData({
+      sender: '',
+      recipient: '',
+      subject: '',
+      body: '',
+    });
+    setAnalysis(null);
+    setError(null);
+  };
+
+  const analysisData = analysis?.analysis || {};
+  const geminiAnalysis = analysisData?.gemini_analysis || {};
+
+  const geminiScores =
+    geminiAnalysis?.available && hasRealScores(geminiAnalysis?.final_component_scores)
+      ? geminiAnalysis.final_component_scores
+      : null;
+
+  const backendFinalScores =
+    hasRealScores(analysisData?.component_scores)
+      ? analysisData.component_scores
+      : null;
+
+  const finalComponentScores = geminiScores || backendFinalScores || {};
+
+  const finalRiskScore =
+    typeof analysisData?.overall_risk_score === 'number'
+      ? analysisData.overall_risk_score
+      : typeof analysisData?.hybrid_score === 'number'
+        ? analysisData.hybrid_score
+        : typeof geminiAnalysis?.final_overall_risk_score === 'number'
+          ? geminiAnalysis.final_overall_risk_score
+          : 0;
+
+  const finalVerdict =
+    analysisData?.verdict ||
+    analysisData?.hybrid_verdict ||
+    geminiAnalysis?.final_verdict ||
+    (analysisData?.is_phishing ? 'phishing' : 'safe');
+
+  const finalConfidence =
+    analysisData?.confidence ||
+    geminiAnalysis?.confidence ||
+    'low';
+
+  const displayedScores = useMemo(() => {
+    return VISIBLE_COMPONENTS.map((item) => ({
+      ...item,
+      value: Number(finalComponentScores?.[item.key] ?? 0),
+    }));
+  }, [finalComponentScores]);
+
+  const geminiReasoning =
+    geminiAnalysis?.reasoning_summary ||
+    analysisData?.hybrid_explanation ||
+    '';
+
+  const recommendedAction =
+    geminiAnalysis?.recommended_action ||
+    (Array.isArray(analysisData?.recommendations)
+      ? analysisData.recommendations.join(' ')
+      : '');
+
+  const threatTypes =
+    geminiAnalysis?.threat_types?.length
+      ? geminiAnalysis.threat_types
+      : analysisData?.threats || [];
+
+  const socialTactics =
+    geminiAnalysis?.social_engineering_tactics || [];
+
   const getRiskColor = (score) => {
-    if (score > 0.7) return '#ff4444';
-    if (score > 0.5) return '#ffaa00';
-    if (score > 0.3) return '#ffdd00';
-    return '#00aa00';
+    if (score > 0.75) return '#dc2626';
+    if (score > 0.5) return '#ea580c';
+    if (score > 0.3) return '#ca8a04';
+    return '#16a34a';
   };
 
   const getRiskLevel = (score) => {
-    if (score > 0.7) return 'CRITICAL';
+    if (score > 0.75) return 'CRITICAL';
     if (score > 0.5) return 'HIGH';
     if (score > 0.3) return 'MEDIUM';
     return 'LOW';
-  };
-
-  const getVerdict = () => {
-    if (!analysis?.analysis) {
-      return 'safe';
-    }
-
-    return analysis.analysis.verdict || (analysis.analysis.is_phishing ? 'phishing' : 'safe');
   };
 
   const getVerdictClass = (verdict) => {
@@ -77,64 +161,53 @@ const EmailAnalyzer = () => {
     return 'EMAIL APPEARS SAFE';
   };
 
-  const mlScores = analysis?.analysis?.ml_scores || {};
-  const phase2Enabled = analysis?.analysis?.phase2_models_enabled;
-
-  const handleReset = () => {
-    setFormData({
-      sender: '',
-      recipient: '',
-      subject: '',
-      body: '',
-    });
-    setAnalysis(null);
-    setError(null);
-  };
+  const scoreSourceLabel = geminiScores
+    ? 'Gemini final judgement'
+    : backendFinalScores
+      ? 'Backend final scores'
+      : 'No score source available';
 
   return (
     <div className="email-analyzer">
       <h1>Email Analyzer</h1>
 
-      <form onSubmit={handleAnalyze} className="analyzer-form">
+      <form className="analyzer-form" onSubmit={handleAnalyze}>
         <div className="form-section">
           <h2>Email Details</h2>
-          
+
           <div className="form-group">
             <label htmlFor="sender">From (Sender Email)</label>
             <input
-              type="email"
               id="sender"
               name="sender"
+              type="email"
               value={formData.sender}
               onChange={handleInputChange}
               placeholder="sender@example.com"
-              required
             />
           </div>
 
           <div className="form-group">
             <label htmlFor="recipient">To (Recipient Email)</label>
             <input
-              type="email"
               id="recipient"
               name="recipient"
+              type="email"
               value={formData.recipient}
               onChange={handleInputChange}
               placeholder="recipient@example.com"
-              required
             />
           </div>
 
           <div className="form-group">
             <label htmlFor="subject">Subject Line</label>
             <input
-              type="text"
               id="subject"
               name="subject"
+              type="text"
               value={formData.subject}
               onChange={handleInputChange}
-              placeholder="Enter email subject"
-              required
+              placeholder="Enter the email subject"
             />
           </div>
 
@@ -143,17 +216,16 @@ const EmailAnalyzer = () => {
             <textarea
               id="body"
               name="body"
+              rows="10"
               value={formData.body}
               onChange={handleInputChange}
-              placeholder="Enter email body content"
-              rows="8"
-              required
+              placeholder="Paste the email body here"
             />
           </div>
 
           <div className="form-buttons">
             <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Analyzing...' : '🔍 Analyze Email'}
+              {loading ? 'Analyzing...' : 'Analyze Email'}
             </button>
             <button type="button" className="btn btn-secondary" onClick={handleReset}>
               Clear Form
@@ -168,107 +240,145 @@ const EmailAnalyzer = () => {
         <div className="analysis-results">
           <h2>Analysis Results</h2>
 
-          {(() => {
-            const verdict = getVerdict();
-            return (
-              <>
-
           <div className="risk-summary">
-            <div className="risk-score-box" style={{ borderColor: getRiskColor(analysis.analysis.overall_risk_score) }}>
-              <div className="risk-label">Risk Score</div>
-              <div className="risk-score">{(analysis.analysis.overall_risk_score * 100).toFixed(1)}%</div>
-              <div className="risk-level" style={{ color: getRiskColor(analysis.analysis.overall_risk_score) }}>
-                {getRiskLevel(analysis.analysis.overall_risk_score)}
+            <div
+              className="risk-score-box"
+              style={{ borderColor: getRiskColor(finalRiskScore) }}
+            >
+              <div className="risk-label">Final Risk Score</div>
+              <div className="risk-score">{(finalRiskScore * 100).toFixed(1)}%</div>
+              <div
+                className="risk-level"
+                style={{ color: getRiskColor(finalRiskScore) }}
+              >
+                {getRiskLevel(finalRiskScore)}
+              </div>
+              <div className="risk-source">
+                Score source: <strong>{scoreSourceLabel}</strong>
               </div>
             </div>
 
             <div className="threat-info">
               <div className="threat-status">
-                <span className={getVerdictClass(verdict)}>
-                  {verdict === 'phishing' ? '🚨 ' : verdict === 'suspicious' ? '⚠ ' : '✓ '}
-                  {getVerdictLabel(verdict)}
+                <span className={getVerdictClass(finalVerdict)}>
+                  {finalVerdict === 'phishing'
+                    ? '🚨 '
+                    : finalVerdict === 'suspicious'
+                      ? '⚠️ '
+                      : '✅ '}
+                  {getVerdictLabel(finalVerdict)}
                 </span>
               </div>
               <div className="confidence">
-                <p>Confidence: <strong>{analysis.analysis.confidence.toUpperCase()}</strong></p>
-                <p>Verdict: <strong>{verdict.toUpperCase()}</strong></p>
+                <p>
+                  Confidence: <strong>{String(finalConfidence).toUpperCase()}</strong>
+                </p>
+                <p>
+                  Verdict: <strong>{String(finalVerdict).toUpperCase()}</strong>
+                </p>
+                <p>
+                  Gemini Used:{' '}
+                  <strong>{analysisData?.gemini_used ? 'Yes' : 'No'}</strong>
+                </p>
               </div>
             </div>
           </div>
 
           <div className="component-scores">
-            <h3>Component Analysis</h3>
-            <div className="scores-grid">
-              {Object.entries(analysis.analysis.component_scores).map(([component, score]) => (
-                <div key={component} className="score-item">
-                  <span className="component-name">
-                    {component.replace('_', ' ').toUpperCase()}
-                  </span>
+            <div className="section-header">
+              <div>
+                <h3>Final Component Analysis</h3>
+                <p>
+                  Showing only the unique final decision factors.
+                </p>
+              </div>
+            </div>
+
+            <div className="scores-grid compact">
+              {displayedScores.map(({ key, label, value }) => (
+                <div key={key} className="score-item clean">
+                  <div className="score-topline">
+                    <span className="component-name">{label}</span>
+                    <span className="score-value">{(value * 100).toFixed(1)}%</span>
+                  </div>
                   <div className="score-bar">
                     <div
                       className="score-fill"
                       style={{
-                        width: `${score * 100}%`,
-                        backgroundColor: getRiskColor(score),
+                        width: `${Math.max(0, Math.min(100, value * 100))}%`,
+                        backgroundColor: getRiskColor(value),
                       }}
                     />
                   </div>
-                  <span className="score-value">{(score * 100).toFixed(1)}%</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="ml-results">
-            <h3>Phase 2 Model Signals</h3>
-            <div className="ml-grid">
-              <div className="ml-card">
-                <span className="ml-label">Content Model Score</span>
-                <strong>{((mlScores.content_score || 0) * 100).toFixed(1)}%</strong>
-              </div>
-              <div className="ml-card">
-                <span className="ml-label">URL Model Score</span>
-                <strong>{((mlScores.url_score || 0) * 100).toFixed(1)}%</strong>
-              </div>
-              <div className="ml-card">
-                <span className="ml-label">Phase 2 Enabled</span>
-                <strong>{phase2Enabled ? 'Yes' : 'No'}</strong>
-              </div>
-            </div>
-          </div>
+          {(geminiReasoning || recommendedAction || socialTactics.length > 0) && (
+            <div className="gemini-judgement-panel">
+              <h3>Gemini Final Judgement</h3>
 
-          <div className="threats-recommendations">
+              {geminiReasoning && (
+                <div className="judgement-block">
+                  <span className="judgement-label">Why Gemini decided this</span>
+                  <p>{geminiReasoning}</p>
+                </div>
+              )}
+
+              {socialTactics.length > 0 && (
+                <div className="judgement-block">
+                  <span className="judgement-label">Detected Tactics</span>
+                  <div className="tag-list">
+                    {socialTactics.map((tactic, idx) => (
+                      <span className="tag" key={`${tactic}-${idx}`}>
+                        {tactic}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {recommendedAction && (
+                <div className="judgement-block">
+                  <span className="judgement-label">Recommended Action</span>
+                  <p>{recommendedAction}</p>
+                </div>
+              )}
+
+              {analysisData?.gemini_analysis?.error && (
+                <div className="judgement-block">
+                  <span className="judgement-label">Gemini Error</span>
+                  <p>{analysisData.gemini_analysis.error}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="threats-recommendations single-column">
             <div className="threats-section">
-              <h3>🎯 Detected Threats</h3>
+              <h3>Detected Threat Types</h3>
               <ul className="threat-list">
-                {analysis.analysis.threats.map((threat, idx) => (
-                  <li key={idx} className="threat-item">
-                    {threat}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="recommendations-section">
-              <h3>💡 Recommendations</h3>
-              <ul className="recommendations-list">
-                {analysis.analysis.recommendations.map((rec, idx) => (
-                  <li key={idx} className="recommendation-item">
-                    {rec}
-                  </li>
-                ))}
+                {threatTypes.length > 0 ? (
+                  threatTypes.map((threat, idx) => (
+                    <li key={idx} className="threat-item">
+                      {threat}
+                    </li>
+                  ))
+                ) : (
+                  <li className="threat-item">No immediate threats detected</li>
+                )}
               </ul>
             </div>
           </div>
 
           {analysis.email_id && (
             <div className="email-id">
-              <p>Email ID: <code>{analysis.email_id}</code></p>
+              <p>
+                Email ID: <code>{analysis.email_id}</code>
+              </p>
             </div>
           )}
-              </>
-            );
-          })()}
         </div>
       )}
     </div>
